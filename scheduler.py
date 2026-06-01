@@ -7,6 +7,14 @@ DB_NAME = "schedule.db"
 DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
 
 
+def _to_24h(t_str):
+    return datetime.strptime(t_str, "%I:%M %p").strftime("%H:%M")
+
+
+def _to_12h(t_str):
+    return datetime.strptime(t_str, "%H:%M").strftime("%I:%M %p")
+
+
 class Database:
     def __init__(self):
         self.conn = sqlite3.connect(DB_NAME)
@@ -29,9 +37,9 @@ class Database:
         if search:
             self.cur.execute("""
                 SELECT * FROM subjects
-                WHERE code LIKE ? OR name LIKE ? OR teacher LIKE ? OR room LIKE ?
+                WHERE id LIKE ? OR code LIKE ? OR name LIKE ? OR teacher LIKE ? OR room LIKE ?
                 ORDER BY day, start_time
-            """, (f"%{search}%", f"%{search}%", f"%{search}%", f"%{search}%"))
+            """, (f"%{search}%", f"%{search}%", f"%{search}%", f"%{search}%", f"%{search}%"))
         else:
             self.cur.execute("SELECT * FROM subjects ORDER BY day, start_time")
         return self.cur.fetchall()
@@ -153,7 +161,10 @@ class SchedulerApp:
         records = self.db.fetch_all(search)
 
         for r in records:
-            self.tree.insert("", tk.END, values=r)
+            r = list(r)
+            r[5] = _to_12h(r[5])
+            r[6] = _to_12h(r[6])
+            self.tree.insert("", tk.END, values=tuple(r))
 
         self.status_label.config(text=f"{len(records)} subject(s)")
         self.selected_id = None
@@ -197,8 +208,8 @@ class AddEditDialog(tk.Toplevel):
             ("Subject Name:", "name"),
             ("Teacher:", "teacher"),
             ("Day:", "day"),
-            ("Start Time (HH:MM):", "start_time"),
-            ("End Time (HH:MM):", "end_time"),
+            ("Start Time (HH:MM AM/PM):", "start_time"),
+            ("End Time (HH:MM AM/PM):", "end_time"),
             ("Room:", "room"),
         ]
 
@@ -234,10 +245,13 @@ class AddEditDialog(tk.Toplevel):
 
         for tf in ("start_time", "end_time"):
             try:
-                datetime.strptime(data[tf], "%H:%M")
+                datetime.strptime(data[tf], "%I:%M %p")
             except ValueError:
-                messagebox.showerror("Validation Error", f"{tf.replace('_', ' ').title()} must be HH:MM (24h)")
+                messagebox.showerror("Validation Error", f"{tf.replace('_', ' ').title()} must be HH:MM AM/PM (12h)")
                 return
+
+        data["start_time"] = _to_24h(data["start_time"])
+        data["end_time"] = _to_24h(data["end_time"])
 
         if data["start_time"] >= data["end_time"]:
             messagebox.showerror("Validation Error", "End time must be after start time.")
